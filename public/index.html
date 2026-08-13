@@ -398,10 +398,10 @@
   <div class="card">
     <div class="card-title">Upload Video</div>
     <div id="drop-zone">
-      <input type="file" id="file-input" accept="video/*" />
+      <input type="file" id="file-input" accept="video/*" multiple />
       <span class="dz-icon">🎥</span>
       <h3>Drop your video here</h3>
-      <p>or click to browse</p>
+      <p>or click to browse &mdash; select multiple files at once</p>
       <div class="file-types">
         <span class="badge">MP4</span>
         <span class="badge">MOV</span>
@@ -415,7 +415,7 @@
       <span class="file-name" id="sel-name"></span>
       <span class="file-size" id="sel-size"></span>
     </div>
-    <button id="upload-btn">Upload &amp; Process</button>
+    <button id="upload-btn" style="display:none">Upload &amp; Process</button>
   </div>
 
   <!-- Jobs -->
@@ -458,8 +458,20 @@
   const playerSection = document.getElementById('player-section');
   const videoPlayer = document.getElementById('video-player');
 
-  let selectedFileObj = null;
+  let selectedFiles = [];
   let hls = null;
+
+  function showSelectedFiles(files) {
+    selectedFiles = Array.from(files);
+    if (selectedFiles.length === 0) return;
+    selName.textContent = selectedFiles.length === 1
+      ? selectedFiles[0].name
+      : `${selectedFiles.length} videos selected`;
+    const totalSize = selectedFiles.reduce((acc, f) => acc + f.size, 0);
+    selSize.textContent = formatBytes(totalSize);
+    selectedFile.style.display = 'flex';
+    uploadBtn.style.display = 'block';
+  }
 
   function formatBytes(b) {
     if (b < 1024) return b + ' B';
@@ -582,13 +594,8 @@
   }
 
   fileInput.addEventListener('change', () => {
-    const file = fileInput.files[0];
-    if (!file) return;
-    selectedFileObj = file;
-    selName.textContent = file.name;
-    selSize.textContent = formatBytes(file.size);
-    selectedFile.style.display = 'flex';
-    uploadBtn.style.display = 'block';
+    if (fileInput.files.length === 0) return;
+    showSelectedFiles(fileInput.files);
   });
 
   dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
@@ -596,52 +603,51 @@
   dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
     dropZone.classList.remove('drag-over');
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
-    selectedFileObj = file;
-    selName.textContent = file.name;
-    selSize.textContent = formatBytes(file.size);
-    selectedFile.style.display = 'flex';
-    uploadBtn.style.display = 'block';
+    if (e.dataTransfer.files.length === 0) return;
+    showSelectedFiles(e.dataTransfer.files);
   });
 
   uploadBtn.addEventListener('click', async () => {
-    if (!selectedFileObj) return;
+    if (selectedFiles.length === 0) return;
     uploadBtn.disabled = true;
-    uploadBtn.textContent = 'Uploading…';
+    uploadBtn.textContent = `Uploading ${selectedFiles.length} video(s)…`;
 
-    const fd = new FormData();
-    fd.append('video', selectedFileObj);
+    const filesToUpload = [...selectedFiles];
 
-    try {
-      const r = await fetch('/api/upload', { method: 'POST', body: fd });
-      const data = await r.json();
+    // Reset UI immediately
+    selectedFiles = [];
+    fileInput.value = '';
+    selectedFile.style.display = 'none';
+    uploadBtn.style.display = 'none';
 
-      if (!r.ok) throw new Error(data.error || 'Upload failed');
+    // Upload each file individually (they'll all enter the queue)
+    const uploadPromises = filesToUpload.map(async (file) => {
+      const fd = new FormData();
+      fd.append('video', file);
+      try {
+        const r = await fetch('/api/upload', { method: 'POST', body: fd });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Upload failed');
 
-      jobs[data.videoId] = {
-        id: data.videoId,
-        filename: selectedFileObj.name,
-        status: data.status,
-        progress: 0,
-        queue_position: data.queuePosition,
-        estimatedSeconds: null,
-      };
+        jobs[data.videoId] = {
+          id: data.videoId,
+          filename: file.name,
+          status: data.status,
+          progress: 0,
+          queue_position: data.queuePosition,
+          estimatedSeconds: null,
+        };
+        renderJobs();
+        subscribeSSE(data.videoId);
+      } catch (err) {
+        alert(`Failed to upload "${file.name}": ${err.message}`);
+      }
+    });
 
-      renderJobs();
-      subscribeSSE(data.videoId);
-      fetchStats();
-
-      selectedFileObj = null;
-      fileInput.value = '';
-      selectedFile.style.display = 'none';
-      uploadBtn.style.display = 'none';
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      uploadBtn.disabled = false;
-      uploadBtn.textContent = 'Upload & Process';
-    }
+    await Promise.all(uploadPromises);
+    fetchStats();
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = 'Upload & Process';
   });
 
   setInterval(fetchStats, 5000);
