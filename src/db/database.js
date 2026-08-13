@@ -1,22 +1,19 @@
-const Database = require('better-sqlite3');
+const fs = require('fs');
 const path = require('path');
 
-const db = new Database(path.resolve('videos.db'));
+const DB_PATH = path.resolve('videos.db.json');
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS videos (
-    id TEXT PRIMARY KEY,
-    filename TEXT NOT NULL,
-    original_path TEXT,
-    status TEXT DEFAULT 'uploaded',
-    queue_position INTEGER,
-    progress INTEGER DEFAULT 0,
-    error_msg TEXT,
-    hls_path TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    completed_at DATETIME
-  )
-`);
+// Load or initialize the store
+const load = () => {
+  try {
+    return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+  } catch {
+    return {};
+  }
+};
 
-module.exports = db;
+const save = (data) => {
+  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+};
+
+module.exports = { load, save };

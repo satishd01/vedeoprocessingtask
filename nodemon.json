@@ -1,0 +1,6 @@
+{
+  "watch": ["src"],
+  "ext": "js,mjs,json",
+  "ignore": ["*.db.json", "videos.db.json", "uploads/*", "hls/*", "test-output/*"],
+  "exec": "node src/index.js"
+}
