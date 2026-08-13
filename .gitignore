@@ -5,4 +5,9 @@ hls/*
 !uploads/.gitkeep
 !hls/.gitkeep
 *.db
+*.db.json
 *.log
+test-output/
+test-bull.js
+test-ffmpeg.js
+flush.js
