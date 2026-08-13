@@ -10,7 +10,7 @@ A production-ready, queue-based video transcoding service. Upload a video, track
 - Real-time status updates over Server-Sent Events (SSE)
 - Auto-retry on failure (up to 3 attempts with exponential backoff)
 - Pending jobs resume automatically after server restart
-- SQLite for job metadata persistence
+- JSON file store for job metadata persistence
 - REST API for upload, status polling and HLS streaming
 
 ## Quick Start — Docker (Recommended)
@@ -105,7 +105,7 @@ src/
 ├── index.js              # App entry point
 ├── config.js             # Environment config
 ├── db/
-│   ├── database.js       # SQLite setup
+│   ├── database.js       # JSON file database
 │   └── videoRepository.js# DB operations
 ├── queue/
 │   ├── videoQueue.js     # Bull queue definition
@@ -150,6 +150,6 @@ hls/{videoId}/
 - **Node.js** + **Express** — HTTP server
 - **Bull** — Redis-backed job queue
 - **FFmpeg** (`fluent-ffmpeg`) — Video transcoding
-- **SQLite** (`better-sqlite3`) — Job metadata
+- **JSON file store** — Job metadata persistence (no native compilation required)
 - **Server-Sent Events** — Real-time progress
 - **Docker** + **Docker Compose** — Containerised deployment
