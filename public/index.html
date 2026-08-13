@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VideoStream — HLS Processing Service</title>
+  <meta name="description" content="Upload videos, track transcoding progress in real time, and play adaptive HLS streams." />
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #111118;
+      --surface2: #1a1a24;
+      --border: rgba(255,255,255,0.07);
+      --accent: #6c63ff;
+      --accent2: #a78bfa;
+      --green: #22c55e;
+      --yellow: #f59e0b;
+      --red: #ef4444;
+      --blue: #38bdf8;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --radius: 14px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    header .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    header .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #fff 40%, var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    header p {
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+    }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+
+    /* Drop zone */
+    #drop-zone {
+      border: 2px dashed rgba(108,99,255,0.35);
+      border-radius: 12px;
+      padding: 52px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: rgba(108,99,255,0.03);
+      position: relative;
+    }
+
+    #drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(108,99,255,0.08);
+    }
+
+    #drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    #drop-zone .dz-icon {
+      font-size: 42px;
+      margin-bottom: 14px;
+      display: block;
+      filter: drop-shadow(0 0 12px rgba(108,99,255,0.5));
+    }
+
+    #drop-zone h3 {
+      font-size: 17px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    #drop-zone p {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    #drop-zone .file-types {
+      margin-top: 14px;
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 10px;
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    /* Upload button */
+    #upload-btn {
+      width: 100%;
+      margin-top: 18px;
+      padding: 14px;
+      background: linear-gradient(135deg, var(--accent), #5b52e6);
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: none;
+      font-family: 'Inter', sans-serif;
+    }
+
+    #upload-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(108,99,255,0.4); }
+    #upload-btn:active { transform: translateY(0); }
+    #upload-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    #selected-file {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      margin-top: 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 14px;
+    }
+
+    #selected-file .file-name { font-weight: 500; flex: 1; }
+    #selected-file .file-size { color: var(--muted); font-size: 12px; }
+
+    /* Status cards */
+    .job-list { display: flex; flex-direction: column; gap: 14px; }
+
+    .job-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      transition: border-color 0.3s;
+    }
+
+    .job-card.active { border-color: rgba(108,99,255,0.4); }
+
+    .job-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      gap: 12px;
+    }
+
+    .job-name {
+      font-size: 14px;
+      font-weight: 600;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .status-pill {
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      white-space: nowrap;
+    }
+
+    .pill-uploaded  { background: rgba(100,116,139,0.15); color: var(--muted); }
+    .pill-queued    { background: rgba(245,158,11,0.15);  color: var(--yellow); }
+    .pill-processing{ background: rgba(108,99,255,0.15);  color: var(--accent2);}
+    .pill-completed { background: rgba(34,197,94,0.15);   color: var(--green); }
+    .pill-failed    { background: rgba(239,68,68,0.15);   color: var(--red); }
+
+    .progress-wrap {
+      height: 5px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      border-radius: 10px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      transition: width 0.5s ease;
+    }
+
+    .job-meta {
+      display: flex;
+      gap: 16px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .play-btn {
+      margin-top: 14px;
+      padding: 9px 18px;
+      background: linear-gradient(135deg, var(--green), #16a34a);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .play-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(34,197,94,0.35); }
+
+    /* Player */
+    #player-section { display: none; }
+
+    #player-section h2 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    #video-player {
+      width: 100%;
+      border-radius: 10px;
+      background: #000;
+      max-height: 460px;
+      display: block;
+    }
+
+    .player-meta {
+      display: flex;
+      gap: 12px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    .player-badge {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .player-badge span { color: var(--text); font-weight: 600; }
+
+    /* Queue stats */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+
+    .stat-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .stat-box .val {
+      font-size: 28px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #fff, var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .stat-box .lbl {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 36px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .empty-state .icon { font-size: 32px; margin-bottom: 10px; display: block; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(108,99,255,0.3);
+      border-top-color: var(--accent2);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @media (max-width: 600px) {
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      body { padding: 24px 14px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🎬</div>
+    <h1>VideoStream</h1>
+  </div>
+  <p>Upload · Transcode · Stream — adaptive HLS with live progress</p>
+</header>
+
+<div class="container">
+
+  <!-- Queue Stats -->
+  <div class="card">
+    <div class="card-title">Queue Overview</div>
+    <div class="stats-row">
+      <div class="stat-box"><div class="val" id="stat-waiting">0</div><div class="lbl">Waiting</div></div>
+      <div class="stat-box"><div class="val" id="stat-active">0</div><div class="lbl">Active</div></div>
+      <div class="stat-box"><div class="val" id="stat-completed">0</div><div class="lbl">Completed</div></div>
+      <div class="stat-box"><div class="val" id="stat-failed">0</div><div class="lbl">Failed</div></div>
+    </div>
+  </div>
+
+  <!-- Upload -->
+  <div class="card">
+    <div class="card-title">Upload Video</div>
+    <div id="drop-zone">
+      <input type="file" id="file-input" accept="video/*" />
+      <span class="dz-icon">🎥</span>
+      <h3>Drop your video here</h3>
+      <p>or click to browse</p>
+      <div class="file-types">
+        <span class="badge">MP4</span>
+        <span class="badge">MOV</span>
+        <span class="badge">MKV</span>
+        <span class="badge">AVI</span>
+        <span class="badge">WEBM</span>
+      </div>
+    </div>
+    <div id="selected-file">
+      <span>📄</span>
+      <span class="file-name" id="sel-name"></span>
+      <span class="file-size" id="sel-size"></span>
+    </div>
+    <button id="upload-btn">Upload &amp; Process</button>
+  </div>
+
+  <!-- Jobs -->
+  <div class="card">
+    <div class="card-title">Processing Jobs</div>
+    <div class="job-list" id="job-list">
+      <div class="empty-state">
+        <span class="icon">📭</span>
+        No videos yet. Upload one above.
+      </div>
+    </div>
+  </div>
+
+  <!-- Player -->
+  <div class="card" id="player-section">
+    <div class="card-title">HLS Player</div>
+    <h2 id="player-title"></h2>
+    <video id="video-player" controls></video>
+    <div class="player-meta">
+      <div class="player-badge">Adaptive: <span>720p / 480p</span></div>
+      <div class="player-badge">Format: <span>HLS</span></div>
+      <div class="player-badge" id="player-id-badge">ID: <span>—</span></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const API = '';
+  const jobs = {};
+  const sseConnections = {};
+
+  const fileInput = document.getElementById('file-input');
+  const dropZone = document.getElementById('drop-zone');
+  const uploadBtn = document.getElementById('upload-btn');
+  const selectedFile = document.getElementById('selected-file');
+  const selName = document.getElementById('sel-name');
+  const selSize = document.getElementById('sel-size');
+  const jobList = document.getElementById('job-list');
+  const playerSection = document.getElementById('player-section');
+  const videoPlayer = document.getElementById('video-player');
+
+  let selectedFileObj = null;
+  let hls = null;
+
+  function formatBytes(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+    return (b / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function formatEta(seconds) {
+    if (!seconds) return null;
+    if (seconds < 60) return `~${seconds}s`;
+    return `~${Math.ceil(seconds / 60)}m`;
+  }
+
+  function pillClass(status) {
+    return `status-pill pill-${status}`;
+  }
+
+  function renderJobs() {
+    const entries = Object.values(jobs);
+    if (entries.length === 0) {
+      jobList.innerHTML = '<div class="empty-state"><span class="icon">📭</span>No videos yet. Upload one above.</div>';
+      return;
+    }
+    jobList.innerHTML = '';
+    [...entries].reverse().forEach(job => {
+      const isActive = job.status === 'processing' || job.status === 'queued';
+      const eta = formatEta(job.estimatedSeconds);
+      const card = document.createElement('div');
+      card.className = `job-card ${isActive ? 'active' : ''}`;
+      card.id = `job-${job.id}`;
+      card.innerHTML = `
+        <div class="job-header">
+          <span class="job-name" title="${job.filename}">${job.filename || 'Video'}</span>
+          <span class="${pillClass(job.status)}">${job.status === 'processing' ? '<span class="spinner"></span>' : ''}${job.status}</span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-bar" style="width:${job.progress || 0}%"></div>
+        </div>
+        <div class="job-meta">
+          <span>Progress: ${job.progress || 0}%</span>
+          ${job.queue_position ? `<span>Queue pos: #${job.queue_position}</span>` : ''}
+          ${eta ? `<span>ETA: ${eta}</span>` : ''}
+          ${job.error_msg ? `<span style="color:var(--red)">Error: ${job.error_msg}</span>` : ''}
+        </div>
+        ${job.status === 'completed' ? `<button class="play-btn" onclick="playVideo('${job.id}','${job.filename}')">▶ Play HLS Stream</button>` : ''}
+      `;
+      jobList.appendChild(card);
+    });
+  }
+
+  function updateJobCard(id, data) {
+    if (!jobs[id]) return;
+    Object.assign(jobs[id], data);
+    renderJobs();
+  }
+
+  function subscribeSSE(videoId) {
+    if (sseConnections[videoId]) return;
+    const es = new EventSource(`${API}/api/videos/${videoId}/status/live`);
+    sseConnections[videoId] = es;
+
+    es.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      updateJobCard(videoId, data);
+      if (data.status === 'completed' || data.status === 'failed') {
+        es.close();
+        delete sseConnections[videoId];
+        fetchStats();
+      }
+    };
+
+    es.onerror = () => {
+      es.close();
+      delete sseConnections[videoId];
+    };
+  }
+
+  async function fetchStats() {
+    try {
+      const r = await fetch('/api/videos/queue/stats');
+      const d = await r.json();
+      document.getElementById('stat-waiting').textContent = d.waiting ?? 0;
+      document.getElementById('stat-active').textContent = d.active ?? 0;
+      document.getElementById('stat-completed').textContent = d.completed ?? 0;
+      document.getElementById('stat-failed').textContent = d.failed ?? 0;
+    } catch (_) {}
+  }
+
+  async function loadExistingJobs() {
+    try {
+      const r = await fetch('/api/videos');
+      const list = await r.json();
+      list.forEach(v => {
+        jobs[v.id] = v;
+        if (v.status !== 'completed' && v.status !== 'failed') subscribeSSE(v.id);
+      });
+      renderJobs();
+    } catch (_) {}
+  }
+
+  function playVideo(id, filename) {
+    const src = `/api/videos/${id}/stream/master.m3u8`;
+    playerSection.style.display = 'block';
+    document.getElementById('player-title').textContent = filename;
+    document.getElementById('player-id-badge').innerHTML = `ID: <span>${id.slice(0, 8)}…</span>`;
+
+    if (hls) { hls.destroy(); }
+
+    if (Hls.isSupported()) {
+      hls = new Hls();
+      hls.loadSource(src);
+      hls.attachMedia(videoPlayer);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => videoPlayer.play());
+    } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+      videoPlayer.src = src;
+      videoPlayer.play();
+    }
+
+    playerSection.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    selectedFileObj = file;
+    selName.textContent = file.name;
+    selSize.textContent = formatBytes(file.size);
+    selectedFile.style.display = 'flex';
+    uploadBtn.style.display = 'block';
+  });
+
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    selectedFileObj = file;
+    selName.textContent = file.name;
+    selSize.textContent = formatBytes(file.size);
+    selectedFile.style.display = 'flex';
+    uploadBtn.style.display = 'block';
+  });
+
+  uploadBtn.addEventListener('click', async () => {
+    if (!selectedFileObj) return;
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'Uploading…';
+
+    const fd = new FormData();
+    fd.append('video', selectedFileObj);
+
+    try {
+      const r = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = await r.json();
+
+      if (!r.ok) throw new Error(data.error || 'Upload failed');
+
+      jobs[data.videoId] = {
+        id: data.videoId,
+        filename: selectedFileObj.name,
+        status: data.status,
+        progress: 0,
+        queue_position: data.queuePosition,
+        estimatedSeconds: null,
+      };
+
+      renderJobs();
+      subscribeSSE(data.videoId);
+      fetchStats();
+
+      selectedFileObj = null;
+      fileInput.value = '';
+      selectedFile.style.display = 'none';
+      uploadBtn.style.display = 'none';
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      uploadBtn.disabled = false;
+      uploadBtn.textContent = 'Upload & Process';
+    }
+  });
+
+  setInterval(fetchStats, 5000);
+  fetchStats();
+  loadExistingJobs();
+</script>
+</body>
+</html>
