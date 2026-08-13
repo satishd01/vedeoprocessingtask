@@ -1,13 +1,12 @@
 const Queue = require('bull');
-const { maxConcurrentJobs } = require('../config');
 
-// Use explicit host/port to force IPv4 (127.0.0.1) on Windows
-// Windows resolves 'localhost' to ::1 (IPv6) which Redis doesn't listen on by default
-const videoQueue = new Queue('video-transcoding', {
-  redis: {
-    host: '127.0.0.1',
-    port: 6379,
-  },
+// In Docker, REDIS_URL is set to redis://redis:6379 (service hostname)
+// Locally on Windows, we force 127.0.0.1 to avoid IPv6 resolution issues
+const redisConfig = process.env.REDIS_URL
+  ? process.env.REDIS_URL
+  : { host: '127.0.0.1', port: 6379 };
+
+const videoQueue = new Queue('video-transcoding', redisConfig, {
   defaultJobOptions: {
     attempts: 3,
     backoff: {
