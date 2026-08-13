@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - PORT=3000
+      - UPLOAD_DIR=./uploads
+      - HLS_DIR=./hls
+      - MAX_CONCURRENT_JOBS=2
+    volumes:
+      - ./uploads:/app/uploads
+      - ./hls:/app/hls
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+volumes:
+  redis_data:
